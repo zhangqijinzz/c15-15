@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { estimateDevice, summarizeScenario, validateDevice } from '../domain';
+import { allocateIntegerPercents, estimateDevice, summarizeScenario, validateDevice } from '../domain';
 import type { EnergyScenario } from '../types';
 
 describe('energy domain', () => {
@@ -15,6 +15,28 @@ describe('energy domain', () => {
     const summary = summarizeScenario(scenario);
     expect(summary.total.monthlyKwh).toBe(12);
     expect(summary.devices.map((device) => device.share)).toEqual([0.25, 0.75]);
+    expect(summary.devices.map((device) => device.sharePercent)).toEqual([25, 75]);
+  });
+
+  it('allocates integer percents that sum to exactly 100 instead of 99 or 101', () => {
+    // 各自四舍五入会得到 33+33+33=99、26+26+49=101
+    expect(allocateIntegerPercents([1, 1, 1]).reduce((sum, p) => sum + p, 0)).toBe(100);
+    expect(allocateIntegerPercents([25.5, 25.5, 49])).toEqual([26, 25, 49]);
+    expect(allocateIntegerPercents([25.5, 25.5, 49]).reduce((sum, p) => sum + p, 0)).toBe(100);
+  });
+
+  it('gives a single device the full 100%', () => {
+    expect(allocateIntegerPercents([42])).toEqual([100]);
+  });
+
+  it('returns all zeros when no device consumes energy yet', () => {
+    expect(allocateIntegerPercents([0, 0, 0])).toEqual([0, 0, 0]);
+    const scenario: EnergyScenario = { id: 's', name: 'test', pricePerKwh: 1, daysPerMonth: 30, createdAt: '', devices: [
+      { id: 'a', name: 'a', watts: 0, dailyHours: 0 }, { id: 'b', name: 'b', watts: 0, dailyHours: 5 },
+    ] };
+    const summary = summarizeScenario(scenario);
+    expect(summary.total.monthlyKwh).toBe(0);
+    expect(summary.devices.map((device) => device.sharePercent)).toEqual([0, 0]);
   });
 
   it('rejects negative power and more than 24 hours', () => {

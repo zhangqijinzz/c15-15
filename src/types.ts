@@ -35,5 +35,5 @@ export interface EnergyEstimate {
 
 export interface ScenarioSummary {
   total: EnergyEstimate;
-  devices: Array<EnergyDevice & EnergyEstimate & { share: number }>;
+  devices: Array<EnergyDevice & EnergyEstimate & { share: number; sharePercent: number }>;
 }

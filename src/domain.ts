@@ -25,7 +25,6 @@ export function summarizeScenario(scenario: EnergyScenario): ScenarioSummary {
   const devices = scenario.devices.map((device) => ({
     ...device,
     ...estimateDevice(device, scenario.daysPerMonth, scenario.pricePerKwh),
-    share: 0,
   }));
   const total = devices.reduce(
     (sum, device) => ({
@@ -35,10 +34,36 @@ export function summarizeScenario(scenario: EnergyScenario): ScenarioSummary {
     }),
     { dailyKwh: 0, monthlyKwh: 0, monthlyCost: 0 },
   );
+  const percents = allocateIntegerPercents(devices.map((device) => device.monthlyKwh));
   return {
     total,
-    devices: devices.map((device) => ({ ...device, share: total.monthlyKwh ? device.monthlyKwh / total.monthlyKwh : 0 })),
+    devices: devices.map((device, index) => ({
+      ...device,
+      share: total.monthlyKwh ? device.monthlyKwh / total.monthlyKwh : 0,
+      sharePercent: percents[index],
+    })),
   };
+}
+
+/**
+ * 用最大余数法把数值摊成合计正好为 100 的整数百分比，
+ * 避免各自四舍五入后出现 99% 或 101%。总量为 0 时全部返回 0。
+ */
+export function allocateIntegerPercents(values: number[]): number[] {
+  const total = values.reduce((sum, value) => sum + value, 0);
+  if (total <= 0) return values.map(() => 0);
+  const exact = values.map((value) => (value / total) * 100);
+  const result = exact.map((value) => Math.floor(value));
+  let remaining = 100 - result.reduce((sum, value) => sum + value, 0);
+  const byLargestFraction = exact
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((a, b) => b.fraction - a.fraction);
+  for (const { index } of byLargestFraction) {
+    if (remaining <= 0) break;
+    result[index] += 1;
+    remaining -= 1;
+  }
+  return result;
 }
 
 export function validateDevice(device: Pick<EnergyDevice, 'name' | 'watts' | 'dailyHours'>): string | null {
