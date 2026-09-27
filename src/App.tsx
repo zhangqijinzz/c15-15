@@ -9,6 +9,10 @@ function App() {
   const summary = vm.activeSummary;
   if (state.status === 'loading' || !active || !summary) return <main className="loading-screen"><div className="pulse" /><p>正在恢复你的能耗方案…</p></main>;
   const maxKwh = Math.max(...summary.devices.map((device) => device.monthlyKwh), 1);
+  const rankedDevices = summary.devices.slice().sort((a, b) => b.monthlyKwh - a.monthlyKwh);
+  const topDevice = rankedDevices[0];
+  const hasUsage = summary.total.monthlyKwh > 0;
+  const singleDevice = summary.devices.length === 1;
   const baseline = state.document?.scenarios.find((item) => item.id !== active.id);
   const comparisonValue = baseline && baseline.id !== active.id ? baseline.devices.reduce((total, device) => total + (device.watts * device.dailyHours * baseline.daysPerMonth) / 1000, 0) : null;
   const deltaKwh = comparisonValue === null ? null : summary.total.monthlyKwh - comparisonValue;
@@ -45,7 +49,26 @@ function App() {
 
       <section className="results-section"><div className="section-title"><div><span className="step">03</span><h2>结果分析</h2><p>你的用电结构，一眼看清</p></div><div className="result-actions"><span className="updated">实时更新 · {state.status === 'completed' ? '已完成' : '编辑中'}</span><button className="primary-button" onClick={() => vm.complete()}>完成本次推演 <span>→</span></button></div></div>
         <div className="metrics"><div className="metric-card featured"><span>月度预计用电</span><strong>{formatNumber(summary.total.monthlyKwh)} <small>kWh</small></strong><em>约 ¥{formatNumber(summary.total.monthlyCost)} / 月</em></div><div className="metric-card"><span>日均用电</span><strong>{formatNumber(summary.total.dailyKwh)} <small>kWh</small></strong><em>平均每天</em></div><div className="metric-card"><span>设备数量</span><strong>{active.devices.length} <small>台</small></strong><em>已纳入估算</em></div></div>
-        <div className="analysis-grid"><div className="chart-card"><div className="card-heading"><div><h3>设备消耗占比</h3><p>按月度用电量排序</p></div><span className="legend"><i /> 月度 kWh</span></div><div className="bar-chart">{summary.devices.slice().sort((a, b) => b.monthlyKwh - a.monthlyKwh).map((device) => <div className="bar-row" key={device.id}><div className="bar-label"><span>{device.name}</span><b>{formatNumber(device.monthlyKwh)} kWh</b></div><div className="bar-track"><i style={{ width: `${(device.monthlyKwh / maxKwh) * 100}%` }} /><span>{Math.round(device.share * 100)}%</span></div></div>)}</div></div><div className="insight-card"><span className="insight-icon">◒</span><h3>你的最大用电来源</h3><strong>{summary.devices.slice().sort((a, b) => b.monthlyKwh - a.monthlyKwh)[0]?.name}</strong><p>占总用电的 <b>{Math.round((summary.devices.slice().sort((a, b) => b.monthlyKwh - a.monthlyKwh)[0]?.share ?? 0) * 100)}%</b>。每天减少 1 小时使用，预计每月可节省 <b>¥{formatNumber((summary.devices.slice().sort((a, b) => b.monthlyKwh - a.monthlyKwh)[0]?.watts ?? 0) / 1000 * active.pricePerKwh * 30)}</b>。</p></div></div>
+        <div className="analysis-grid">
+          <div className="chart-card">
+            <div className="card-heading"><div><h3>设备消耗占比</h3><p>按月度用电量排序</p></div><span className="legend"><i /> 月度 kWh</span></div>
+            {hasUsage ? (
+              <>
+                <div className="bar-chart">{rankedDevices.map((device) => <div className="bar-row" key={device.id}><div className="bar-label"><span>{device.name}</span><b>{formatNumber(device.monthlyKwh)} kWh</b></div><div className="bar-track"><i style={{ width: `${(device.monthlyKwh / maxKwh) * 100}%` }} /><span>{device.sharePercent}%</span></div></div>)}</div>
+                <p className="chart-note">占比 = 设备月用电 ÷ 方案总用电，百分比已取整，合计 100%</p>
+              </>
+            ) : (
+              <div className="chart-empty"><span>✦</span><p>设备还没有有效的功率或使用时长，填上参数后这里会展示每台设备的用电占比。</p></div>
+            )}
+          </div>
+          <div className="insight-card">
+            <span className="insight-icon">◒</span>
+            <h3>你的最大用电来源</h3>
+            {!hasUsage && <><strong>等待设备参数</strong><p>当前设备还没有有效用电，暂时无法判断用电结构。为设备填上功率与每日使用时长后，这里会指出最大用电来源。</p></>}
+            {hasUsage && singleDevice && topDevice && <><strong>{topDevice.name}</strong><p>方案里只有这一台设备，全部用电都来自它。每天减少 1 小时使用，预计每月可节省 <b>¥{formatNumber((topDevice.watts / 1000) * active.pricePerKwh * 30)}</b>。</p></>}
+            {hasUsage && !singleDevice && topDevice && <><strong>{topDevice.name}</strong><p>占总用电的 <b>{topDevice.sharePercent}%</b>。每天减少 1 小时使用，预计每月可节省 <b>¥{formatNumber((topDevice.watts / 1000) * active.pricePerKwh * 30)}</b>。</p></>}
+          </div>
+        </div>
       </section>
 
       <section className="scenario-section"><div className="section-title"><div><span className="step">04</span><h2>方案对比</h2><p>复制当前方案，试试另一种生活方式</p></div><button className="secondary-button" onClick={() => vm.duplicateActive()}>＋ 复制当前方案</button></div><div className="scenario-grid">{state.document?.scenarios.map((scenario) => <ScenarioCard key={scenario.id} scenario={scenario} totalKwh={scenario.id === active.id ? summary.total.monthlyKwh : scenario.devices.reduce((sum, device) => sum + (device.watts * device.dailyHours * scenario.daysPerMonth) / 1000, 0)} active={scenario.id === active.id} onSelect={() => vm.selectScenario(scenario.id)} />)}</div>{baseline && deltaKwh !== null && <div className="comparison-note"><span>↕</span><p>当前方案相较于“{baseline.name}”每月 <b>{deltaKwh <= 0 ? '少' : '多'} {formatNumber(Math.abs(deltaKwh))} kWh</b>，电费约 <b>¥{formatNumber(Math.abs(deltaKwh) * active.pricePerKwh)}</b>。</p></div>}</section>

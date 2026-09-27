@@ -25,7 +25,6 @@ export function summarizeScenario(scenario: EnergyScenario): ScenarioSummary {
   const devices = scenario.devices.map((device) => ({
     ...device,
     ...estimateDevice(device, scenario.daysPerMonth, scenario.pricePerKwh),
-    share: 0,
   }));
   const total = devices.reduce(
     (sum, device) => ({
@@ -35,10 +34,29 @@ export function summarizeScenario(scenario: EnergyScenario): ScenarioSummary {
     }),
     { dailyKwh: 0, monthlyKwh: 0, monthlyCost: 0 },
   );
+  const shares = devices.map((device) => (total.monthlyKwh > 0 ? device.monthlyKwh / total.monthlyKwh : 0));
+  const percents = toDisplayPercents(shares);
   return {
     total,
-    devices: devices.map((device) => ({ ...device, share: total.monthlyKwh ? device.monthlyKwh / total.monthlyKwh : 0 })),
+    devices: devices.map((device, index) => ({ ...device, share: shares[index], sharePercent: percents[index] })),
   };
+}
+
+export function toDisplayPercents(shares: number[]): number[] {
+  const totalShare = shares.reduce((sum, share) => sum + share, 0);
+  if (totalShare <= 0) return shares.map(() => 0);
+  const exact = shares.map((share) => (share / totalShare) * 100);
+  const percents = exact.map(Math.floor);
+  let remaining = 100 - percents.reduce((sum, percent) => sum + percent, 0);
+  const byFraction = exact
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((a, b) => b.fraction - a.fraction);
+  for (const { index } of byFraction) {
+    if (remaining <= 0) break;
+    percents[index] += 1;
+    remaining -= 1;
+  }
+  return percents;
 }
 
 export function validateDevice(device: Pick<EnergyDevice, 'name' | 'watts' | 'dailyHours'>): string | null {
